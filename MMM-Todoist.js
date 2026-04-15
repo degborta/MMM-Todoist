@@ -54,6 +54,7 @@ Module.register("MMM-Todoist", {
 		displaySubtasks: true, // set to false to exclude subtasks
 		displayAvatar: false,
 		displayAssigneeName: false,
+		alternateColors: false,
 		showProject: true,
 		// projectColors: ["#95ef63", "#ff8581", "#ffc471", "#f9ec75", "#a8c8e4", "#d2b8a3", "#e2a8e4", "#cccccc", "#fb886e",
 		// 	"#ffcc00", "#74e8d3", "#3bd5fb", "#dc4fad", "#ac193d", "#d24726", "#82ba00", "#03b3b2", "#008299",
@@ -693,10 +694,10 @@ Module.register("MMM-Todoist", {
 		}
 
 		//Iterate through Todos
-		this.tasks.items.forEach(item => {
+		this.tasks.items.forEach((item, index) => {
 			var divRow = document.createElement("div");
 			//Add the Row
-			divRow.className = "divTableRow";
+			divRow.className = "divTableRow" + (this.config.alternateColors && index % 2 === 1 ? " alt" : "");
 			
 
 			//Columns

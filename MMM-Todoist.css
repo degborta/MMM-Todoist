@@ -90,6 +90,9 @@
 .divTableBody {
 	display: table-row-group;
 }
+.divTableRow.alt {
+	background-color: rgba(255, 255, 255, 0.05);
+}
 .todoTextCell {
     width: 400px;
     overflow: hidden;
