@@ -53,6 +53,7 @@ Module.register("MMM-Todoist", {
 		// 2019-12-31 by thyed
 		displaySubtasks: true, // set to false to exclude subtasks
 		displayAvatar: false,
+		displayAssigneeName: false,
 		showProject: true,
 		// projectColors: ["#95ef63", "#ff8581", "#ffc471", "#f9ec75", "#a8c8e4", "#d2b8a3", "#e2a8e4", "#cccccc", "#fb886e",
 		// 	"#ffcc00", "#74e8d3", "#3bd5fb", "#dc4fad", "#ac193d", "#d24726", "#82ba00", "#03b3b2", "#008299",
@@ -392,7 +393,8 @@ Module.register("MMM-Todoist", {
 		this.tasks = {
 			"items": items,
 			"projects": tasks.projects || [],
-			"collaborators": tasks.collaborators || []
+			"collaborators": tasks.collaborators || [],
+			"user": tasks.user || null
 		};
 
 	},
@@ -630,6 +632,15 @@ Module.register("MMM-Todoist", {
 
 		return cell;
 	},
+	addAssigneeNameCell: function(item, collaboratorsMap) {
+		var colIndex = collaboratorsMap.get(item.responsible_uid);
+		var firstName = "";
+		if (typeof colIndex !== "undefined" && this.tasks.collaborators && this.tasks.collaborators[colIndex]) {
+			var fullName = this.tasks.collaborators[colIndex].full_name || "";
+			firstName = fullName.split(" ")[0];
+		}
+		return this.createCell("xsmall", firstName);
+	},
 	getDom: function () {
 	
 		if (this.config.hideWhenEmpty && (!this.tasks || !this.tasks.items || this.tasks.items.length === 0)) {
@@ -699,6 +710,10 @@ Module.register("MMM-Todoist", {
 			}
 			if (this.config.displayAvatar) {
 				divRow.appendChild(this.addAssigneeAvatorCell(item, collaboratorsMap));
+			}
+			if (this.config.displayAssigneeName) {
+				divRow.appendChild(this.addColumnSpacerCell());
+				divRow.appendChild(this.addAssigneeNameCell(item, collaboratorsMap));
 			}
 
 			divBody.appendChild(divRow);
