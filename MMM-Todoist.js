@@ -600,14 +600,18 @@ Module.register("MMM-Todoist", {
 		avatarImg.className = "todoAvatarImg";
 
 		var colIndex = collaboratorsMap.get(item.responsible_uid);
-		if (typeof colIndex !== "undefined" && 
-		    this.tasks.collaborators && 
-		    this.tasks.collaborators[colIndex] && 
-		    this.tasks.collaborators[colIndex].image_id != null) {
-			avatarImg.src = "https://dcff1xvirvpfp.cloudfront.net/" + this.tasks.collaborators[colIndex].image_id + "_big.jpg";
-		} else { 
-			avatarImg.src = "/modules/MMM-Todoist/1x1px.png"; 
+		var avatarSrc = null;
+		if (typeof colIndex !== "undefined" && this.tasks.collaborators && this.tasks.collaborators[colIndex]) {
+			var col = this.tasks.collaborators[colIndex];
+			if (col.avatar_big) {
+				avatarSrc = col.avatar_big;
+			} else if (col.avatar_medium) {
+				avatarSrc = col.avatar_medium;
+			} else if (col.image_id != null) {
+				avatarSrc = "https://dcff1xvirvpfp.cloudfront.net/" + col.image_id + "_big.jpg";
+			}
 		}
+		avatarImg.src = avatarSrc || "/modules/MMM-Todoist/1x1px.png";
 
 		var cell = this.createCell("", "");
 		cell.appendChild(avatarImg);
