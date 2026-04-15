@@ -91,9 +91,8 @@
 	display: table-row-group;
 }
 .divTableRow.alt {
-	background-color: rgba(255, 255, 255, 0.05);
-}
-.todoTextCell {
+	box-shadow: inset 3px 0 0 rgba(255, 255, 255, 0.2);
+}.todoTextCell {
     width: 400px;
     overflow: hidden;
 }
