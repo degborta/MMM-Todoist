@@ -595,14 +595,23 @@ Module.register("MMM-Todoist", {
 		var innerHTML = "<span class='projectcolor' style='color: " + projectcolor + "; background-color: " + projectcolor + "'></span>" + (project.name || "");
 		return this.createCell("xsmall", innerHTML);
 	},
-	addAssigneeAvatorCell: function(item, collaboratorsMap) {	
+	addAssigneeAvatorCell: function(item, collaboratorsMap) {
 		var avatarImg = document.createElement("img");
 		avatarImg.className = "todoAvatarImg";
+
+		if (this.config.debug) {
+			console.log("MMM-Todoist avatar debug — item.responsible_uid:", item.responsible_uid,
+				"collaboratorsMap size:", collaboratorsMap.size,
+				"collaborators:", JSON.stringify(this.tasks.collaborators));
+		}
 
 		var colIndex = collaboratorsMap.get(item.responsible_uid);
 		var avatarSrc = null;
 		if (typeof colIndex !== "undefined" && this.tasks.collaborators && this.tasks.collaborators[colIndex]) {
 			var col = this.tasks.collaborators[colIndex];
+			if (this.config.debug) {
+				console.log("MMM-Todoist avatar debug — matched collaborator:", JSON.stringify(col));
+			}
 			if (col.avatar_big) {
 				avatarSrc = col.avatar_big;
 			} else if (col.avatar_medium) {
@@ -610,6 +619,9 @@ Module.register("MMM-Todoist", {
 			} else if (col.image_id != null) {
 				avatarSrc = "https://dcff1xvirvpfp.cloudfront.net/" + col.image_id + "_big.jpg";
 			}
+		}
+		if (this.config.debug) {
+			console.log("MMM-Todoist avatar debug — final src:", avatarSrc || "(placeholder)");
 		}
 		avatarImg.src = avatarSrc || "/modules/MMM-Todoist/1x1px.png";
 
@@ -649,11 +661,23 @@ Module.register("MMM-Todoist", {
 		// create mapping from user id to collaborator index
 		var collaboratorsMap = new Map();
 
-		if (this.tasks.collaborators && Array.isArray(this.tasks.collaborators)) {
-			for (var value=0; value < this.tasks.collaborators.length; value++) {
-				if (this.tasks.collaborators[value] && this.tasks.collaborators[value].id) {
-					collaboratorsMap.set(this.tasks.collaborators[value].id, value);
-				}
+		if (!Array.isArray(this.tasks.collaborators)) {
+			this.tasks.collaborators = [];
+		}
+
+		// The API does not include the logged-in user in the collaborators array,
+		// but tasks can be assigned to them (responsible_uid matches user.id).
+		// Inject the current user so avatar lookup works for self-assigned tasks.
+		if (this.tasks.user && this.tasks.user.id) {
+			var alreadyPresent = this.tasks.collaborators.some(function(c) { return c && c.id === this.tasks.user.id; }, this);
+			if (!alreadyPresent) {
+				this.tasks.collaborators.push(this.tasks.user);
+			}
+		}
+
+		for (var value=0; value < this.tasks.collaborators.length; value++) {
+			if (this.tasks.collaborators[value] && this.tasks.collaborators[value].id) {
+				collaboratorsMap.set(this.tasks.collaborators[value].id, value);
 			}
 		}
 
