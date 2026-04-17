@@ -697,7 +697,7 @@ Module.register("MMM-Todoist", {
 		this.tasks.items.forEach((item, index) => {
 			var divRow = document.createElement("div");
 			//Add the Row
-			divRow.className = "divTableRow" + (this.config.alternateColors && index % 2 === 1 ? " alt" : "");
+			divRow.className = "divTableRow" + (this.config.alternateColors && index % 2 === 0 ? " alt" : "");
 			
 
 			//Columns
