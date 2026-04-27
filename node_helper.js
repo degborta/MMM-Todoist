@@ -49,8 +49,16 @@ module.exports = NodeHelper.create({
 
 	completeTask: function(taskId) {
 		var self = this;
-		axios.post("https://api.todoist.com/rest/v2/tasks/" + taskId + "/close", {}, {
-			headers: { "Authorization": "Bearer " + self.config.accessToken }
+		var { randomUUID } = require("crypto");
+		var command = JSON.stringify([{ type: "item_complete", uuid: randomUUID(), args: { id: taskId } }]);
+		var params = new URLSearchParams();
+		params.append("commands", command);
+
+		axios.post(self.config.apiBase + "/" + self.config.apiVersion + "/" + self.config.todoistEndpoint, params.toString(), {
+			headers: {
+				"content-type": "application/x-www-form-urlencoded",
+				"Authorization": "Bearer " + self.config.accessToken
+			}
 		})
 		.then(function() {
 			if (self.config.debug) {
