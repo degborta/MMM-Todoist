@@ -47,12 +47,16 @@ module.exports = NodeHelper.create({
 		return new Date(parts[0], parts[1] - 1, parts[2], parts[3] || 0, parts[4] || 0, parts[5] || 0);
 	},
 
-	completeTask: function(taskId) {
+	completeOverdueTasks: function(items) {
 		var self = this;
 		var { randomUUID } = require("crypto");
-		var command = JSON.stringify([{ type: "item_complete", uuid: randomUUID(), args: { id: taskId } }]);
+
+		var commands = items.map(function(item) {
+			return { type: "item_close", uuid: randomUUID(), args: { id: item.id } };
+		});
+
 		var params = new URLSearchParams();
-		params.append("commands", command);
+		params.append("commands", JSON.stringify(commands));
 
 		axios.post(self.config.apiBase + "/" + self.config.apiVersion + "/" + self.config.todoistEndpoint, params.toString(), {
 			headers: {
@@ -60,13 +64,16 @@ module.exports = NodeHelper.create({
 				"Authorization": "Bearer " + self.config.accessToken
 			}
 		})
-		.then(function() {
+		.then(function(response) {
 			if (self.config.debug) {
-				console.log("MMM-Todoist: Auto-completed overdue task " + taskId);
+				var status = response.data && response.data.sync_status ? response.data.sync_status : {};
+				var names = items.map(function(i) { return i.content; });
+				console.log("MMM-Todoist: Auto-completed " + items.length + " overdue task(s):", names);
+				console.log("MMM-Todoist: sync_status:", JSON.stringify(status));
 			}
 		})
 		.catch(function(error) {
-			console.error("MMM-Todoist: Failed to auto-complete task " + taskId + ":", error.message);
+			console.error("MMM-Todoist: Failed to auto-complete overdue tasks:", error.message);
 		});
 	},
 
@@ -133,7 +140,7 @@ module.exports = NodeHelper.create({
 						if (self.config.debug) {
 							console.log("MMM-Todoist: Auto-completing " + overdueItems.length + " overdue task(s):", overdueItems.map(function(i) { return i.content; }));
 						}
-						overdueItems.forEach(function(item) { self.completeTask(item.id); });
+						self.completeOverdueTasks(overdueItems);
 					}
 				}
 
