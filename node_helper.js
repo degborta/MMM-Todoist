@@ -30,6 +30,7 @@ try {
 module.exports = NodeHelper.create({
 	start: function() {
 		console.log("Starting node helper for: " + this.name);
+		this.completedTaskIds = new Set();
 	},
 
 	socketNotificationReceived: function(notification, payload) {
@@ -137,10 +138,15 @@ module.exports = NodeHelper.create({
 					if (overdueItems.length > 0) {
 						var overdueIds = new Set(overdueItems.map(function(item) { return item.id; }));
 						taskJson.items = taskJson.items.filter(function(item) { return !overdueIds.has(item.id); });
-						if (self.config.debug) {
-							console.log("MMM-Todoist: Auto-completing " + overdueItems.length + " overdue task(s):", overdueItems.map(function(i) { return i.content; }));
+
+						var newItems = overdueItems.filter(function(item) { return !self.completedTaskIds.has(item.id); });
+						if (newItems.length > 0) {
+							newItems.forEach(function(item) { self.completedTaskIds.add(item.id); });
+							if (self.config.debug) {
+								console.log("MMM-Todoist: Auto-completing " + newItems.length + " overdue task(s):", newItems.map(function(i) { return i.content; }));
+							}
+							self.completeOverdueTasks(newItems);
 						}
-						self.completeOverdueTasks(overdueItems);
 					}
 				}
 
