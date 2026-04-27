@@ -92,6 +92,8 @@ Module.register("MMM-Todoist", {
 
 		todoistResourceType: "[\"items\", \"projects\", \"collaborators\", \"user\", \"labels\"]",
 
+		autoCompleteOverdueTasks: false,
+
 		debug: false
 	},
 

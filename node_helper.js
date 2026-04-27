@@ -39,6 +39,29 @@ module.exports = NodeHelper.create({
 		}
 	},
 
+	parseDueDate: function(dateStr) {
+		var parts = dateStr.split(/\D/).map(Number);
+		if (dateStr[dateStr.length - 1] === "Z") {
+			return new Date(Date.UTC(parts[0], parts[1] - 1, parts[2], parts[3] || 0, parts[4] || 0, parts[5] || 0));
+		}
+		return new Date(parts[0], parts[1] - 1, parts[2], parts[3] || 0, parts[4] || 0, parts[5] || 0);
+	},
+
+	completeTask: function(taskId) {
+		var self = this;
+		axios.post("https://api.todoist.com/rest/v2/tasks/" + taskId + "/close", {}, {
+			headers: { "Authorization": "Bearer " + self.config.accessToken }
+		})
+		.then(function() {
+			if (self.config.debug) {
+				console.log("MMM-Todoist: Auto-completed overdue task " + taskId);
+			}
+		})
+		.catch(function(error) {
+			console.error("MMM-Todoist: Failed to auto-complete task " + taskId + ":", error.message);
+		});
+	},
+
 	fetchTodos : function() {
 		var self = this;
 		var accessCode = self.config.accessToken;
@@ -83,6 +106,27 @@ module.exports = NodeHelper.create({
 						error: "Invalid response format"
 					});
 					return;
+				}
+
+				if (self.config.autoCompleteOverdueTasks) {
+					var today = new Date();
+					today.setHours(0, 0, 0, 0);
+
+					var overdueItems = taskJson.items.filter(function(item) {
+						if (!item.due) return false;
+						var dueDate = self.parseDueDate(item.due.date);
+						dueDate.setHours(0, 0, 0, 0);
+						return dueDate < today;
+					});
+
+					if (overdueItems.length > 0) {
+						var overdueIds = new Set(overdueItems.map(function(item) { return item.id; }));
+						taskJson.items = taskJson.items.filter(function(item) { return !overdueIds.has(item.id); });
+						if (self.config.debug) {
+							console.log("MMM-Todoist: Auto-completing " + overdueItems.length + " overdue task(s):", overdueItems.map(function(i) { return i.content; }));
+						}
+						overdueItems.forEach(function(item) { self.completeTask(item.id); });
+					}
 				}
 
 				let markdownConverter = null;
