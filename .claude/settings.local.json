@@ -5,7 +5,10 @@
       "mcp__plugin_context7_context7__query-docs",
       "Bash(rtk git *)",
       "WebSearch",
-      "WebFetch(domain:developer.todoist.com)"
+      "WebFetch(domain:developer.todoist.com)",
+      "Bash(node -e \"const axios = require\\('axios'\\); console.log\\('axios version:', require\\('./node_modules/axios/package.json'\\).version\\);\")",
+      "Bash(curl -s -X POST https://api.todoist.com/api/v1/sync -H 'Authorization: Bearer 54ee7165e27ec14d118aa9e7b5ea170a43a388cb' -H 'Content-Type: application/x-www-form-urlencoded' --data-urlencode 'sync_token=*' --data-urlencode 'resource_types=[\"items\", \"projects\", \"collaborators\", \"user\", \"labels\"]')",
+      "Bash(curl *)"
     ]
   }
 }
