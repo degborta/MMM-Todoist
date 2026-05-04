@@ -48,6 +48,8 @@ Module.register("MMM-Todoist", {
 		displayLastUpdateFormat: "dd - HH:mm:ss", //format to display the last update. See Moment.js documentation for all display possibilities
 		maxTitleLength: 25, //10 to 50. Value to cut the line if wrapEvents: true
 		wrapEvents: false, // wrap events to multiple lines breaking at maxTitleLength
+		taskFontSize: "small", // Font size for task names: xsmall, small, medium, large, xlarge
+		displayDueDate: true, // Set to false to hide the due date column
 		displayTasksWithoutDue: true, // Set to false to not print tasks without a due date
 		displayTasksWithinDays: -1, // If >= 0, do not print tasks with a due date more than this number of days into the future (e.g., 0 prints today and overdue)
 		// 2019-12-31 by thyed
@@ -521,7 +523,7 @@ Module.register("MMM-Todoist", {
 			// this item is a subtask so indent it
 			taskText = '- ' + taskText;
 		}
-		return this.createCell("title bright alignLeft", 
+		return this.createCell(this.config.taskFontSize + " bright alignLeft",
 			this.shorten(taskText, this.config.maxTitleLength, this.config.wrapEvents));
 	},
 	addDueDateCell: function(item) {
@@ -706,7 +708,9 @@ Module.register("MMM-Todoist", {
 			divRow.appendChild(this.addPriorityIndicatorCell(item));
 			divRow.appendChild(this.addColumnSpacerCell());
 			divRow.appendChild(this.addTodoTextCell(item));
-			divRow.appendChild(this.addDueDateCell(item));
+			if (this.config.displayDueDate) {
+					divRow.appendChild(this.addDueDateCell(item));
+				}
 			if (this.config.showProject) {
 				divRow.appendChild(this.addColumnSpacerCell());
 				divRow.appendChild(this.addProjectCell(item));
