@@ -50,6 +50,8 @@ Module.register("MMM-Todoist", {
 		wrapEvents: false, // wrap events to multiple lines breaking at maxTitleLength
 		taskFontSize: "small", // Font size for task names: xsmall, small, medium, large, xlarge
 		displayDueDate: true, // Set to false to hide the due date column
+		groupByAssignee: false, // Set to true to render one column per assignee
+		assigneeOrder: [], // Optional list of user IDs controlling left-to-right column order
 		displayTasksWithoutDue: true, // Set to false to not print tasks without a due date
 		displayTasksWithinDays: -1, // If >= 0, do not print tasks with a due date more than this number of days into the future (e.g., 0 prints today and overdue)
 		// 2019-12-31 by thyed
@@ -646,71 +648,23 @@ Module.register("MMM-Todoist", {
 		}
 		return this.createCell("xsmall", firstName);
 	},
-	getDom: function () {
-	
-		if (this.config.hideWhenEmpty && (!this.tasks || !this.tasks.items || this.tasks.items.length === 0)) {
-			return null;
-		}
-	
-		//Add a new div to be able to display the update time alone after all the task
-		var wrapper = document.createElement("div");
-
-		//display "loading..." if not loaded
-		if (!this.loaded) {
-			wrapper.innerHTML = "Loading...";
-			wrapper.className = "dimmed light small";
-			return wrapper;
-		}
-
-
-		//New CSS based Table
+	buildTaskTable: function(items, collaboratorsMap) {
 		var divTable = document.createElement("div");
 		divTable.className = "divTable normal small light";
 
 		var divBody = document.createElement("div");
 		divBody.className = "divTableBody";
-		
-		if (this.tasks === undefined || !this.tasks.items) {
-			return wrapper;
-		}
 
-		// create mapping from user id to collaborator index
-		var collaboratorsMap = new Map();
-
-		if (!Array.isArray(this.tasks.collaborators)) {
-			this.tasks.collaborators = [];
-		}
-
-		// The API does not include the logged-in user in the collaborators array,
-		// but tasks can be assigned to them (responsible_uid matches user.id).
-		// Inject the current user so avatar lookup works for self-assigned tasks.
-		if (this.tasks.user && this.tasks.user.id) {
-			var alreadyPresent = this.tasks.collaborators.some(function(c) { return c && c.id === this.tasks.user.id; }, this);
-			if (!alreadyPresent) {
-				this.tasks.collaborators.push(this.tasks.user);
-			}
-		}
-
-		for (var value=0; value < this.tasks.collaborators.length; value++) {
-			if (this.tasks.collaborators[value] && this.tasks.collaborators[value].id) {
-				collaboratorsMap.set(this.tasks.collaborators[value].id, value);
-			}
-		}
-
-		//Iterate through Todos
-		this.tasks.items.forEach((item, index) => {
+		items.forEach((item, index) => {
 			var divRow = document.createElement("div");
-			//Add the Row
 			divRow.className = "divTableRow" + (this.config.alternateColors && index % 2 === 0 ? " alt" : "");
-			
 
-			//Columns
 			divRow.appendChild(this.addPriorityIndicatorCell(item));
 			divRow.appendChild(this.addColumnSpacerCell());
 			divRow.appendChild(this.addTodoTextCell(item));
 			if (this.config.displayDueDate) {
-					divRow.appendChild(this.addDueDateCell(item));
-				}
+				divRow.appendChild(this.addDueDateCell(item));
+			}
 			if (this.config.showProject) {
 				divRow.appendChild(this.addColumnSpacerCell());
 				divRow.appendChild(this.addProjectCell(item));
@@ -725,14 +679,112 @@ Module.register("MMM-Todoist", {
 
 			divBody.appendChild(divRow);
 		});
-		
+
 		divTable.appendChild(divBody);
-		wrapper.appendChild(divTable);
 
-		// create the gradient
-		if (this.config.fade && this.config.fadePoint < 1) divTable.querySelectorAll('.divTableRow').forEach((row, i, rows) => row.style.opacity = Math.max(0, Math.min(1 - ((((i + 1) * (1 / (rows.length))) - this.config.fadePoint) / (1 - this.config.fadePoint)) * (1 - this.config.fadeMinimumOpacity), 1)));
+		if (this.config.fade && this.config.fadePoint < 1) {
+			divTable.querySelectorAll('.divTableRow').forEach((row, i, rows) =>
+				row.style.opacity = Math.max(0, Math.min(1 - ((((i + 1) * (1 / (rows.length))) - this.config.fadePoint) / (1 - this.config.fadePoint)) * (1 - this.config.fadeMinimumOpacity), 1)));
+		}
 
-		// display the update time at the end, if defined so by the user config
+		return divTable;
+	},
+	getDom: function () {
+
+		if (this.config.hideWhenEmpty && (!this.tasks || !this.tasks.items || this.tasks.items.length === 0)) {
+			return null;
+		}
+
+		var wrapper = document.createElement("div");
+
+		if (!this.loaded) {
+			wrapper.innerHTML = "Loading...";
+			wrapper.className = "dimmed light small";
+			return wrapper;
+		}
+
+		if (this.tasks === undefined || !this.tasks.items) {
+			return wrapper;
+		}
+
+		// Build collaborator id → index map, injecting the logged-in user if absent
+		var collaboratorsMap = new Map();
+		if (!Array.isArray(this.tasks.collaborators)) {
+			this.tasks.collaborators = [];
+		}
+		if (this.tasks.user && this.tasks.user.id) {
+			var alreadyPresent = this.tasks.collaborators.some(function(c) { return c && c.id === this.tasks.user.id; }, this);
+			if (!alreadyPresent) {
+				this.tasks.collaborators.push(this.tasks.user);
+			}
+		}
+		for (var value = 0; value < this.tasks.collaborators.length; value++) {
+			if (this.tasks.collaborators[value] && this.tasks.collaborators[value].id) {
+				collaboratorsMap.set(this.tasks.collaborators[value].id, value);
+			}
+		}
+
+		if (this.config.groupByAssignee) {
+			// Group tasks by responsible_uid
+			var groups = new Map();
+			var unassigned = [];
+			this.tasks.items.forEach(item => {
+				if (item.responsible_uid) {
+					if (!groups.has(item.responsible_uid)) groups.set(item.responsible_uid, []);
+					groups.get(item.responsible_uid).push(item);
+				} else {
+					unassigned.push(item);
+				}
+			});
+
+			// Determine column order: honour assigneeOrder, then append any remaining uids
+			var orderedUids = this.config.assigneeOrder.length > 0
+				? this.config.assigneeOrder.filter(uid => groups.has(uid))
+				: Array.from(groups.keys());
+			groups.forEach((_, uid) => { if (!orderedUids.includes(uid)) orderedUids.push(uid); });
+
+			var columnsContainer = document.createElement("div");
+			columnsContainer.className = "todoColumns";
+
+			orderedUids.forEach(uid => {
+				var items = groups.get(uid) || [];
+				if (items.length === 0) return;
+
+				var column = document.createElement("div");
+				column.className = "todoColumn";
+
+				// Resolve first name from collaboratorsMap
+				var colIndex = collaboratorsMap.get(uid);
+				var name = String(uid);
+				if (typeof colIndex !== "undefined" && this.tasks.collaborators[colIndex]) {
+					name = (this.tasks.collaborators[colIndex].full_name || "").split(" ")[0] || name;
+				}
+
+				var header = document.createElement("div");
+				header.className = "todoColumnHeader bright";
+				header.innerHTML = name;
+				column.appendChild(header);
+
+				column.appendChild(this.buildTaskTable(items, collaboratorsMap));
+				columnsContainer.appendChild(column);
+			});
+
+			if (unassigned.length > 0) {
+				var uCol = document.createElement("div");
+				uCol.className = "todoColumn";
+				var uHeader = document.createElement("div");
+				uHeader.className = "todoColumnHeader bright";
+				uHeader.innerHTML = "Unassigned";
+				uCol.appendChild(uHeader);
+				uCol.appendChild(this.buildTaskTable(unassigned, collaboratorsMap));
+				columnsContainer.appendChild(uCol);
+			}
+
+			wrapper.appendChild(columnsContainer);
+		} else {
+			wrapper.appendChild(this.buildTaskTable(this.tasks.items, collaboratorsMap));
+		}
+
 		if (this.config.displayLastUpdate) {
 			var updateinfo = document.createElement("div");
 			updateinfo.className = "xsmall light align-left";
@@ -740,7 +792,6 @@ Module.register("MMM-Todoist", {
 			wrapper.appendChild(updateinfo);
 		}
 
-		//**** FOR DEBUGGING TO HELP PEOPLE GET THEIR PROJECT IDs - (People who can't see console) */
 		if (this.config.debug) {
 			var projectsids = document.createElement("div");
 			projectsids.className = "xsmall light align-left";
@@ -749,8 +800,7 @@ Module.register("MMM-Todoist", {
 				projectsids.innerHTML += "<span>" + project.name + " -- " + project.id + "</span><br />";
 			});
 			wrapper.appendChild(projectsids);
-		};
-		//****** */
+		}
 
 		return wrapper;
 	}
