@@ -512,23 +512,9 @@ Module.register("MMM-Todoist", {
 		return this.createCell("spacerCell", "&nbsp;");
 	},
 	addTodoTextCell: function(item) {
-		var taskText = "";
-		if (item.contentHtml) {
-			var temp = document.createElement('div');
-			temp.innerHTML = item.contentHtml;
-			var para = temp.getElementsByTagName('p');
-			if (para && para.length > 0) {
-				taskText = para[0].textContent || para[0].innerText || "";
-			} else {
-				taskText = temp.textContent || temp.innerText || item.content || "";
-			}
-		} else {
-			taskText = item.content || "";
-		}
-		
-		// if sorting by todoist, indent subtasks under their parents
+		var taskText = item.content || "";
+
 		if (this.config.sortType === "todoist" && item.parent_id) {
-			// this item is a subtask so indent it
 			taskText = '- ' + taskText;
 		}
 		return this.createCell(this.config.taskFontSize + " bright alignLeft",
