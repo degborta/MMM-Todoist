@@ -34,3 +34,6 @@ node_modules
 
 # Tarballs
 *.tgz
+
+# Local Claude settings (may contain secrets like API tokens)
+.claude/settings.local.json

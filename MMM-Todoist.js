@@ -48,6 +48,7 @@ Module.register("MMM-Todoist", {
 		displayLastUpdateFormat: "dd - HH:mm:ss", //format to display the last update. See Moment.js documentation for all display possibilities
 		maxTitleLength: 25, //10 to 50. Value to cut the line if wrapEvents: true
 		wrapEvents: false, // wrap events to multiple lines breaking at maxTitleLength
+		showHeader: true, // Set to false to hide the module header
 		taskFontSize: "small", // Font size for task names: xsmall, small, medium, large, xlarge
 		displayDueDate: true, // Set to false to hide the due date column
 		groupByAssignee: false, // Set to true to render one column per assignee
@@ -99,6 +100,11 @@ Module.register("MMM-Todoist", {
 		autoCompleteOverdueTasks: false,
 
 		debug: false
+	},
+
+	getHeader: function() {
+		if (!this.config.showHeader) return undefined;
+		return this.data.header;
 	},
 
 	// Define required scripts.
@@ -512,7 +518,7 @@ Module.register("MMM-Todoist", {
 			temp.innerHTML = item.contentHtml;
 			var para = temp.getElementsByTagName('p');
 			if (para && para.length > 0) {
-				taskText = para[0].innerHTML;
+				taskText = para[0].textContent || para[0].innerText || "";
 			} else {
 				taskText = temp.textContent || temp.innerText || item.content || "";
 			}
