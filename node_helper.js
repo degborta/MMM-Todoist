@@ -73,7 +73,12 @@ module.exports = NodeHelper.create({
 		var { randomUUID } = require("crypto");
 
 		var commands = items.map(function(item) {
-			return { type: "item_close", uuid: randomUUID(), args: { id: item.id } };
+			// Use the task's original due date at 23:59:59 as date_completed so Todoist
+			// re-anchors the next recurrence from the correct date, not from today.
+			var dueDateStr = item.due && item.due.date ? item.due.date.slice(0, 10) : null;
+			var args = { id: item.id };
+			if (dueDateStr) args.date_completed = dueDateStr + "T23:59:59";
+			return { type: "item_complete", uuid: randomUUID(), args: args };
 		});
 
 		var params = new URLSearchParams();
