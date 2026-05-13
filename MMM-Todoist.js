@@ -99,6 +99,10 @@ Module.register("MMM-Todoist", {
 
 		autoCompleteOverdueTasks: false,
 
+		// Schedule-based task management (replaces Todoist recurring tasks)
+		schedule: null,          // Schedule config object (see README for format)
+		scheduleProjectId: null, // Todoist project ID where scheduled tasks are created
+
 		debug: false
 	},
 

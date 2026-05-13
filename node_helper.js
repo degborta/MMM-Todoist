@@ -50,6 +50,21 @@ module.exports = NodeHelper.create({
 		return new Date(parts[0], parts[1] - 1, parts[2], parts[3] || 0, parts[4] || 0, parts[5] || 0);
 	},
 
+	formatDate: function(date) {
+		var y = date.getFullYear();
+		var m = String(date.getMonth() + 1).padStart(2, "0");
+		var d = String(date.getDate()).padStart(2, "0");
+		return y + "-" + m + "-" + d;
+	},
+
+	getISOWeek: function(date) {
+		var d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+		var dayNum = d.getUTCDay() || 7;
+		d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+		var yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+		return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+	},
+
 	mergeDelta: function(delta) {
 		var cache = this.cachedData;
 		["items", "projects", "collaborators", "labels"].forEach(function(key) {
@@ -106,7 +121,196 @@ module.exports = NodeHelper.create({
 		});
 	},
 
-	fetchTodos: function(retryCount) {
+	// Manages the chore schedule: completes overdue tasks and creates today's tasks.
+	// Calls callback(true) if commands were sent (caller should resync), callback(false) otherwise.
+	manageSchedule: function(callback) {
+		var self = this;
+		var schedule = self.config.schedule;
+		var projectId = self.config.scheduleProjectId;
+
+		if (!schedule || !projectId || !self.cachedData) {
+			callback(false);
+			return;
+		}
+
+		var { randomUUID } = require("crypto");
+		var today = new Date();
+		today.setHours(0, 0, 0, 0);
+		var todayStr = self.formatDate(today);
+
+		var dayNames = ["su", "mo", "tu", "we", "th", "fr", "sa"];
+		var todayName = dayNames[today.getDay()];
+
+		// Use week2 on even ISO weeks if defined, otherwise always week1
+		var weekKey = "week1";
+		if (schedule.week2) {
+			weekKey = (self.getISOWeek(today) % 2 === 1) ? "week1" : "week2";
+		}
+		var weekSchedule = schedule[weekKey];
+
+		if (!weekSchedule) {
+			callback(false);
+			return;
+		}
+
+		// All task names in any week/day, used to identify overdue scheduled tasks
+		var scheduledNames = new Set();
+		["week1", "week2"].forEach(function(wk) {
+			if (!schedule[wk]) return;
+			Object.values(schedule[wk]).forEach(function(userSched) {
+				Object.values(userSched).forEach(function(dayTasks) {
+					dayTasks.forEach(function(n) { scheduledNames.add(n); });
+				});
+			});
+		});
+
+		var projectItems = self.cachedData.items.filter(function(item) {
+			return !item.checked && !item.is_deleted && item.project_id === projectId;
+		});
+
+		var commands = [];
+
+		// Complete any overdue scheduled tasks (due before today)
+		projectItems.forEach(function(item) {
+			if (!item.due) return;
+			var dueStr = item.due.date.slice(0, 10);
+			if (dueStr < todayStr && scheduledNames.has(item.content)) {
+				commands.push({
+					type: "item_complete",
+					uuid: randomUUID(),
+					args: {
+						id: item.id,
+						date_completed: dueStr + "T23:59:59"
+					}
+				});
+			}
+		});
+
+		// Create today's tasks for each user if they don't already exist
+		var users = schedule.users || {};
+		Object.keys(weekSchedule).forEach(function(userName) {
+			var userId = String(users[userName] || "");
+			if (!userId) return;
+			var todayTasks = weekSchedule[userName][todayName] || [];
+			todayTasks.forEach(function(taskName) {
+				var alreadyExists = projectItems.some(function(item) {
+					return item.content === taskName
+						&& String(item.responsible_uid) === userId
+						&& item.due && item.due.date.slice(0, 10) === todayStr;
+				});
+				if (!alreadyExists) {
+					commands.push({
+						type: "item_add",
+						uuid: randomUUID(),
+						temp_id: randomUUID(),
+						args: {
+							content: taskName,
+							project_id: projectId,
+							responsible_uid: userId,
+							due: { date: todayStr }
+						}
+					});
+				}
+			});
+		});
+
+		if (commands.length === 0) {
+			if (self.config.debug) {
+				console.log("MMM-Todoist: Schedule up to date, no commands needed");
+			}
+			callback(false);
+			return;
+		}
+
+		if (self.config.debug) {
+			console.log("MMM-Todoist: Running " + commands.length + " schedule command(s)");
+		}
+
+		var params = new URLSearchParams();
+		params.append("commands", JSON.stringify(commands));
+
+		axios.post(
+			self.config.apiBase + "/" + self.config.apiVersion + "/" + self.config.todoistEndpoint,
+			params.toString(),
+			{
+				headers: {
+					"content-type": "application/x-www-form-urlencoded",
+					"Authorization": "Bearer " + self.config.accessToken
+				}
+			}
+		).then(function(response) {
+			if (self.config.debug) {
+				console.log("MMM-Todoist: Schedule sync_status:", JSON.stringify(response.data && response.data.sync_status));
+			}
+			self.syncToken = "*";
+			self.cachedData = null;
+			callback(true);
+		}).catch(function(error) {
+			console.error("MMM-Todoist: Schedule management failed:", error.message);
+			callback(false);
+		});
+	},
+
+	_dispatchTasks: function(accessCode) {
+		var self = this;
+
+		var data = {
+			items: self.cachedData.items.filter(function(item) {
+				return !item.checked && !item.is_deleted;
+			}),
+			projects: self.cachedData.projects,
+			collaborators: self.cachedData.collaborators,
+			user: self.cachedData.user,
+			labels: self.cachedData.labels
+		};
+
+		// autoCompleteOverdueTasks is skipped when schedule management is active
+		if (self.config.autoCompleteOverdueTasks && !self.config.schedule) {
+			var today = new Date();
+			today.setHours(0, 0, 0, 0);
+
+			var overdueItems = data.items.filter(function(item) {
+				if (!item.due) return false;
+				var dueDate = self.parseDueDate(item.due.date);
+				dueDate.setHours(0, 0, 0, 0);
+				return dueDate < today;
+			});
+
+			if (overdueItems.length > 0) {
+				var overdueIds = new Set(overdueItems.map(function(item) { return item.id; }));
+				data.items = data.items.filter(function(item) { return !overdueIds.has(item.id); });
+
+				var newItems = overdueItems.filter(function(item) { return !self.completedTaskIds.has(item.id); });
+				if (newItems.length > 0) {
+					newItems.forEach(function(item) { self.completedTaskIds.add(item.id); });
+					if (self.config.debug) {
+						console.log("MMM-Todoist: Auto-completing " + newItems.length + " overdue task(s):", newItems.map(function(i) { return i.content; }));
+					}
+					self.completeOverdueTasks(newItems);
+				}
+			}
+		}
+
+		let markdownConverter = null;
+		if (showdown) {
+			markdownConverter = new showdown.Converter();
+		}
+
+		data.items.forEach((item) => {
+			if (item.content) {
+				if (markdownConverter) {
+					item.contentHtml = markdownConverter.makeHtml(item.content);
+				} else {
+					item.contentHtml = item.content;
+				}
+			}
+		});
+
+		data.accessToken = accessCode;
+		self.sendSocketNotification("TASKS", data);
+	},
+
+	fetchTodos: function(retryCount, skipSchedule) {
 		var self = this;
 		retryCount = retryCount || 0;
 		var accessCode = self.config.accessToken;
@@ -167,60 +371,18 @@ module.exports = NodeHelper.create({
 					self.mergeDelta(taskJson);
 				}
 
-				// Work on a shallow copy so we don't mutate the cache
-				var data = {
-					items: self.cachedData.items.filter(function(item) {
-						return !item.checked && !item.is_deleted;
-					}),
-					projects: self.cachedData.projects,
-					collaborators: self.cachedData.collaborators,
-					user: self.cachedData.user,
-					labels: self.cachedData.labels
-				};
-
-				if (self.config.autoCompleteOverdueTasks) {
-					var today = new Date();
-					today.setHours(0, 0, 0, 0);
-
-					var overdueItems = data.items.filter(function(item) {
-						if (!item.due) return false;
-						var dueDate = self.parseDueDate(item.due.date);
-						dueDate.setHours(0, 0, 0, 0);
-						return dueDate < today;
-					});
-
-					if (overdueItems.length > 0) {
-						var overdueIds = new Set(overdueItems.map(function(item) { return item.id; }));
-						data.items = data.items.filter(function(item) { return !overdueIds.has(item.id); });
-
-						var newItems = overdueItems.filter(function(item) { return !self.completedTaskIds.has(item.id); });
-						if (newItems.length > 0) {
-							newItems.forEach(function(item) { self.completedTaskIds.add(item.id); });
-							if (self.config.debug) {
-								console.log("MMM-Todoist: Auto-completing " + newItems.length + " overdue task(s):", newItems.map(function(i) { return i.content; }));
-							}
-							self.completeOverdueTasks(newItems);
-						}
-					}
-				}
-
-				let markdownConverter = null;
-				if (showdown) {
-					markdownConverter = new showdown.Converter();
-				}
-
-				data.items.forEach((item) => {
-					if (item.content) {
-						if (markdownConverter) {
-							item.contentHtml = markdownConverter.makeHtml(item.content);
+				if (self.config.schedule && !skipSchedule) {
+					self.manageSchedule(function(needsResync) {
+						if (needsResync) {
+							// Re-fetch with fresh state after schedule commands ran
+							self.fetchTodos(0, true);
 						} else {
-							item.contentHtml = item.content;
+							self._dispatchTasks(accessCode);
 						}
-					}
-				});
-
-				data.accessToken = accessCode;
-				self.sendSocketNotification("TASKS", data);
+					});
+				} else {
+					self._dispatchTasks(accessCode);
+				}
 			} else {
 				console.error("MMM-Todoist: Unexpected response status: " + response.status);
 				self.sendSocketNotification("FETCH_ERROR", { error: "Unexpected response status: " + response.status });
